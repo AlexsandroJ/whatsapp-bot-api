@@ -1,3 +1,24 @@
+#!/bin/bash
+
+# =============================================================================
+# 🤖 WhatsApp Bot API - Gerador de README.md
+# Script para gerar documentação automática do projeto
+# =============================================================================
+
+set -e  # Sai imediatamente se algum comando falhar
+
+# Cores para output (opcional)
+GREEN='\033[0;32m'
+BLUE='\033[1;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🚀 Gerando README.md para WhatsApp Bot API...${NC}"
+
+# Nome do arquivo de saída
+OUTPUT_FILE="README.md"
+
+# Cabeçalho
+cat > "$OUTPUT_FILE" << 'EOF'
 # 🤖 WhatsApp Bot API
 
 [![Node.js](https://img.shields.io/badge/Node.js-18.x-green.svg)](https://nodejs.org/)
