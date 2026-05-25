@@ -1,3 +1,4 @@
+import os from 'os';
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -77,4 +78,64 @@ if (require.main === module) {
     }
   }
   startServer();
+  
+
+
+
+
+
+/*
+// --- Monitoramento de Recursos (CPU e Memória) ---
+// Função para formatar bytes em MB/GB de forma legível
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// Função para calcular uso de CPU (média entre intervalos)
+const getCPUUsage = (): Promise<number> => {
+  return new Promise((resolve) => {
+    const start = process.cpuUsage();
+    const startTime = process.hrtime();
+    
+    setTimeout(() => {
+      const end = process.cpuUsage(start);
+      const elapsedTime = process.hrtime(startTime);
+      
+      // Calcula porcentagem de CPU usada neste intervalo
+      const user = end.user / 1000; // microssegundos -> milissegundos
+      const system = end.system / 1000;
+      const elapsedMs = elapsedTime[0] * 1000 + elapsedTime[1] / 1e6;
+      const cpuPercent = ((user + system) / elapsedMs / os.cpus().length) * 100;
+      
+      resolve(Math.min(100, Math.max(0, cpuPercent)));
+    }, 100); // Intervalo curto para medição
+  });
+};
+
+// Inicia o monitoramento a cada 10 segundos
+setInterval(async () => {
+  const mem = process.memoryUsage();
+  const cpu = await getCPUUsage();
+  
+  console.log(`
+📊 [MONITOR] ${new Date().toLocaleTimeString()}
+   ├─ CPU: ${cpu.toFixed(1)}%
+   ├─ Memória RSS: ${formatBytes(mem.rss)}
+   ├─ Memória Heap: ${formatBytes(mem.heapUsed)} / ${formatBytes(mem.heapTotal)}
+   └─ Vazamento? Heap growth: ${formatBytes(mem.heapUsed - mem.heapTotal * 0.5) > '0 MB' ? '⚠️' : '✅'}
+  `.trim());
+}, 1000); // Ajuste o intervalo conforme necessário
+
+*/
+
+
+
+
+
+
+
 }

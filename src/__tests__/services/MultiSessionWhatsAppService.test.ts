@@ -308,6 +308,7 @@ describe('MultiSessionWhatsAppService', () => {
     service = new MultiSessionWhatsAppService(TEST_SECRET);
   });
 
+
   // ==================== CRIAÇÃO DE SESSÃO ====================
 
   describe('createSession()', () => {

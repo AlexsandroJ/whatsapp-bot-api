@@ -33,10 +33,18 @@ export type MediaMessage = {
   caption?: string;
 };
 
+// Tipo para evento de desconexão
+export type DisconnectEvent = {
+  reason?: Error;
+  shouldReconnect: boolean;
+  code?: number;
+};
+
 export class WhatsAppService {
   private sock: WASocket | null = null;
   private isReady: boolean = false;
   private isConnecting: boolean = false;
+  private reconnectTimeout?: NodeJS.Timeout; // ✅ Controle de timeout de reconexão
   public readonly sessionPath: string;
 
   // Dependencies injetáveis
@@ -60,6 +68,23 @@ export class WhatsAppService {
     }
   }
 
+  /**
+   * Mapeia códigos de desconexão para mensagens legíveis
+   */
+  private getDisconnectReason(code?: number): string {
+    const reasons: Record<number, string> = {
+      401: 'Não autorizado / Logout',
+      403: 'Acesso proibido',
+      408: 'Timeout de conexão',
+      428: 'Conexão substituída (outro dispositivo)',
+      500: 'Erro interno do servidor',
+      515: 'Serviço indisponível / Conexão perdida',
+      503: 'Serviço temporariamente indisponível',
+      440: 'Sessão expirada',
+    };
+    return reasons[code || 0] || `Código desconhecido: ${code}`;
+  }
+
   public async start(): Promise<void> {
     if (this.isConnecting) {
       console.log('⏳ Conexão já em andamento...');
@@ -78,7 +103,10 @@ export class WhatsAppService {
         logger: pino({ level: 'silent' }),
         browser: ['WhatsApp Bot API', 'Chrome', '1.0.0'],
         defaultQueryTimeoutMs: undefined,
-        syncFullHistory: false
+        syncFullHistory: false,
+        // ✅ Configurações adicionais para estabilidade
+        markOnlineOnConnect: true,
+        emitOwnEvents: true,
       });
 
       this.setupEventHandlers(saveCreds);
@@ -86,7 +114,7 @@ export class WhatsAppService {
 
     } catch (error) {
       console.error('❌ Erro ao iniciar WhatsApp:', error);
-      this.isConnecting = false;
+      this.isConnecting = false; // ✅ Garante reset em caso de erro
       throw error;
     }
   }
@@ -106,16 +134,44 @@ export class WhatsAppService {
 
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const reason = this.getDisconnectReason(statusCode);
 
-        console.log(`🔌 Conexão fechada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`);
+        console.log(`🔌 Conexão fechada. Código: ${statusCode} - ${reason}`);
+
         this.isReady = false;
-        this.emit('disconnected', { reason: lastDisconnect?.error, shouldReconnect });
+        this.isConnecting = false;
 
-        if (shouldReconnect) {
-          console.log('🔄 Tentando reconectar em 5s...');
-          setTimeout(() => this.start(), 5000);
+        // ✅ CASO 1: Sessão invalidada/expirada → Limpa e pede novo QR
+        if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+          console.log('📲 Sessão cancelada pelo celular. Limpando dados...');
+          this.clearSession();
+
+          this.emit('disconnected', {
+            reason: 'session_expired',
+            shouldReconnect: false,
+            code: statusCode
+          });
+
+          // Reinicia após 1s para gerar novo QR Code
+          setTimeout(() => this.start(), 1000);
+          return;
         }
+
+        // ✅ CASO 2: Queda de rede/servidor → Reconecta mantendo sessão
+        this.emit('disconnected', {
+          reason: lastDisconnect?.error || reason,
+          shouldReconnect: true,
+          code: statusCode
+        });
+
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = undefined;
+        }
+
+        console.log('🔄 Tentando reconectar em 5s...');
+        this.reconnectTimeout = setTimeout(() => this.start(), 5000);
+        // ✅ Se não for reconectar, isConnecting já foi resetado acima
       } else if (connection === 'open') {
         console.log('✅ WhatsApp Conectado e Pronto!');
         this.isReady = true;
@@ -341,7 +397,7 @@ export class WhatsAppService {
         }))
       ),
       viewOnce: false
-    } as any); // Type assertion para compatibilidade com listas
+    } as any);
   }
 
   /**
@@ -380,8 +436,8 @@ export class WhatsAppService {
   }
 
   /**
-  * Reage a uma mensagem
-  */
+   * Reage a uma mensagem
+   */
   public async sendReaction(
     jid: string,
     messageId: string,
@@ -389,7 +445,6 @@ export class WhatsAppService {
   ): Promise<void> {
     this.validateConnection();
 
-    // ✅ CORREÇÃO: Normalizar JID antes de usar
     const normalizedJid = this.normalizeJid(jid);
 
     await this.sock!.sendMessage(normalizedJid, {
@@ -398,7 +453,7 @@ export class WhatsAppService {
         key: {
           id: messageId,
           fromMe: false,
-          remoteJid: normalizedJid  // ✅ Usar JID normalizado aqui também
+          remoteJid: normalizedJid
         }
       }
     });
@@ -413,7 +468,6 @@ export class WhatsAppService {
     options?: { forceForward?: boolean }
   ): Promise<MessageResponse> {
     this.validateConnection();
-    // Substitua a linha ~405 por:
     const result = await (this.sock as any).forwardMessage(
       this.normalizeJid(jid),
       message,
@@ -427,8 +481,8 @@ export class WhatsAppService {
   }
 
   /**
-  * Deleta mensagem (para todos ou apenas para você)
-  */
+   * Deleta mensagem (para todos ou apenas para você)
+   */
   public async deleteMessage(
     jid: string,
     messageId: string,
@@ -436,15 +490,14 @@ export class WhatsAppService {
   ): Promise<void> {
     this.validateConnection();
 
-    // ✅ CORREÇÃO: Normalizar JID antes de usar
     const normalizedJid = this.normalizeJid(jid);
 
     await this.sock!.sendMessage(normalizedJid, {
       delete: {
         id: messageId,
         fromMe: onlyForMe,
-        remoteJid: normalizedJid,  // ✅ JID normalizado
-        participant: onlyForMe ? undefined : normalizedJid  // ✅ JID normalizado
+        remoteJid: normalizedJid,
+        participant: onlyForMe ? undefined : normalizedJid
       }
     });
   }
@@ -461,8 +514,8 @@ export class WhatsAppService {
   }
 
   /**
- * Parseia mensagem recebida para formato simplificado
- */
+   * Parseia mensagem recebida para formato simplificado
+   */
   public parseMessage(msg: WAMessage): {
     id: string;
     sender: string;
@@ -482,7 +535,7 @@ export class WhatsAppService {
       || msg.message?.documentMessage?.caption
       || '';
 
-    // ✅ CORREÇÃO: Verificar todos os tipos de mensagem de texto
+    // Verificar todos os tipos de mensagem de texto
     const isText = !!(
       msg.message?.conversation ||
       msg.message?.extendedTextMessage ||
@@ -545,7 +598,6 @@ export class WhatsAppService {
   /**
    * Verifica se número existe no WhatsApp
    */
-  // Substitua o bloco da linha ~506 por:
   public async verifyNumber(jid: string): Promise<{ exists: boolean; jid?: string }> {
     this.validateConnection();
     const results = await this.sock!.onWhatsApp(jid);
@@ -560,7 +612,10 @@ export class WhatsAppService {
   /**
    * Atualiza presença (digitando, gravando, online)
    */
-  public async updatePresence(jid: string, presence: 'available' | 'unavailable' | 'composing' | 'recording' | 'paused'): Promise<void> {
+  public async updatePresence(
+    jid: string,
+    presence: 'available' | 'unavailable' | 'composing' | 'recording' | 'paused'
+  ): Promise<void> {
     this.validateConnection();
     await this.sock!.sendPresenceUpdate(presence, this.normalizeJid(jid));
   }
@@ -571,13 +626,24 @@ export class WhatsAppService {
    * Disconnecta gracefulmente
    */
   public async disconnect(): Promise<void> {
+    // Limpa timeout de reconexão pendente
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = undefined;
+    }
+
     if (this.sock) {
       console.log('🔌 Desconectando do WhatsApp...');
       await this.sock.logout();
       this.sock = null;
       this.isReady = false;
       this.isConnecting = false;
-      this.emit('disconnected', { reason: 'user_requested' });
+
+      // ✅ Agora compatível com o tipo atualizado
+      this.emit('disconnected', {
+        reason: 'user_requested',
+        shouldReconnect: false
+      });
     }
   }
 
@@ -597,13 +663,33 @@ export class WhatsAppService {
       throw new Error('Cliente WhatsApp não está pronto');
     }
   }
+  /**
+ * Limpa completamente os dados de sessão (QR antigo/inválido)
+ */
+  private clearSession(): void {
+    try {
+      if (fs.existsSync(this.sessionPath)) {
+        // Node 14.14+ suporta recursive: true
+        fs.rmSync(this.sessionPath, { recursive: true, force: true });
+        console.log('🗑️ Dados de sessão removidos com sucesso');
+      }
+    } catch (err) {
+      console.warn('⚠️ Falha ao limpar sessão:', err);
+    } finally {
+      // Garante que a pasta será recriada no próximo start()
+      this.ensureSessionDirectory();
+    }
+  }
 
   // ==================== ESTADO E EVENTOS ====================
 
   // Sistema simples de eventos (pode ser substituído por EventEmitter)
   private listeners: Record<string, Function[]> = {};
 
-  public on(event: 'connected' | 'disconnected' | 'qr' | 'message' | 'error' | 'presence', handler: Function): void {
+  public on(
+    event: 'connected' | 'disconnected' | 'qr' | 'message' | 'error' | 'presence',
+    handler: Function
+  ): void {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(handler);
   }
@@ -627,9 +713,7 @@ export class WhatsAppService {
 
   // Setters para testes
   public setReady(ready: boolean): void { this.isReady = ready; }
-  public setClient(client: WASocket | null): void {
-    this.sock = client;
-  }
+  public setClient(client: WASocket | null): void { this.sock = client; }
 }
 
 // Singleton para produção
