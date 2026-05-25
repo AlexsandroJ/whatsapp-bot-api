@@ -58,7 +58,7 @@ jest.mock('pino', () => () => ({
 // IMPORTS
 // =====================================================
 import * as fs from 'fs';
-import { WhatsAppService, MessageResponse, MediaMessage } from '../services/WhatsAppService';
+import { WhatsAppService, MessageResponse, MediaMessage } from '../../services/WhatsAppService';
 import * as baileys from '@whiskeysockets/baileys';
 
 describe('WhatsAppService', () => {
