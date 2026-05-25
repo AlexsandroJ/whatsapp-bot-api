@@ -1,0 +1,57 @@
+# ==================== DEPENDÊNCIAS E BUILD ====================
+/node_modules
+/dist
+/build
+/*.js
+/*.d.ts
+!/*.d.ts  # Mantém arquivos .d.ts na raiz se houver
+
+# ==================== COBERTURA E TESTES ====================
+/coverage
+/test-results
+/junit.xml
+*.test.js
+*.test.d.ts
+
+# ==================== AMBIENTE E SEGREDO ====================
+/.env
+/.env.local
+/.env.*.local
+/.env.test
+!.env.example  # ← Permite commitar um exemplo vazio para documentação
+
+# ==================== SESSÃO WHATSAPP (SENSÍVEL!) ====================
+/auth_info_baileys
+/auth_info_baileys_backup
+*.session.json
+
+# ==================== LOGS E TEMP ====================
+*.log
+logs/
+temp/
+tmp/
+*.tmp
+*.temp
+
+# ==================== IDE E EDITORES ====================
+/.vscode
+/.idea
+*.swp
+*.swo
+*~
+
+# ==================== SISTEMA OPERACIONAL ====================
+.DS_Store          # macOS
+Thumbs.db          # Windows
+desktop.ini        # Windows
+
+# ==================== BANCO DE DADOS LOCAL (se usar) ====================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==================== OUTROS ====================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
