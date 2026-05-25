@@ -1,10 +1,15 @@
 // src/__tests__/controllers/BotController.test.ts
 /// <reference types="jest" />
 
+import express, { Application, Request, Response, NextFunction } from 'express';
+
 import request from 'supertest';
-import app from '../../server';
+//import app from '../../server';
 import { whatsappService } from '../../services/WhatsAppService';
 import MessageLog from '../../models/MessageLog';
+import { createTestApp } from '../utils/testApp';
+
+
 
 // Mock dos serviços externos
 jest.mock('../../services/WhatsAppService', () => ({
@@ -47,11 +52,13 @@ jest.mock('../../models/MessageLog', () => ({
 }));
 
 describe('BotController - API Completa', () => {
+  let app: express.Application;
   let token: string;
   const testNumber = '5511999999999';
   const testMessage = 'Mensagem de teste';
 
   beforeAll(async () => {
+    app = createTestApp();
     // Registrar e logar usuário para obter token
     await request(app).post('/api/auth/register').send({
       username: 'test_bot_api',

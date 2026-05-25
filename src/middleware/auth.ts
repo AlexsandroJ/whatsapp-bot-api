@@ -1,28 +1,28 @@
 // src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/auth';
+import { AuthRequest, AuthPayload } from '../types/auth';
 
 // Middleware para proteger rotas com JWT
-export const protectRoute = (req: Request, res: Response, next: NextFunction) => {
-  let token = '';
+export const protectRoute = (
+  req: AuthRequest, 
+  res: Response, 
+  next: NextFunction
+): void => {
+  const token = req.headers.authorization?.split(' ')[1];
   
-  // ✅ CORREÇÃO: Verificar se headers existe antes de acessar
-  if (req.headers && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
   if (!token) {
-    return res.status(401).json({ success: false, message: 'Não autorizado, nenhum token' });
+    res.status(401).json({ success: false, message: 'Token não fornecido' });
+    return;
   }
-
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    return res.status(401).json({ success: false, message: 'Token inválido ou expirado' });
+  
+  try {
+    const decoded = verifyToken(token);
+    req.user = decoded; // ✅ TypeScript sabe que req.user existe aqui
+    next();
+  } catch (error) {
+    res.status(401).json({ success: false, message: 'Token inválido' });
   }
-
-  // @ts-ignore
-  req.user = decoded;
-  next();
 };
 
 // Middleware para proteção simples por API Key

@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/database';
 import authRoutes from './routes/AuthRoutes';
 import botRoutes from './routes/BotRoutes';
+import sessionRoutes from './routes/SessionRoutes'; // Novas rotas multi-sessão
 // ✅ IMPORTAÇÃO ADICIONADA (O Jest irá mockar isso nos testes)
 import { whatsappService } from './services/WhatsAppService';
 
@@ -21,6 +22,11 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// Health check (público)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Rate Limiting Global
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
@@ -31,11 +37,21 @@ app.use('/api/', limiter);
 // --- Rotas ---
 app.use('/api/auth', authRoutes);
 app.use('/api/bot', botRoutes);
-
+app.use('/api/sessions', sessionRoutes);
+// Error handler global
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('❌ Erro não tratado:', err);
+  res.status(500).json({
+    success: false,
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Erro interno no servidor'
+  });
+});
 // Health Check
 app.get('/', (req, res) => {
   res.json({ message: 'API WhatsApp Bot Rodando' });
 });
+
+
 
 // --- Inicialização do Servidor ---
 // Este bloco só executa se rodarmos 'node dist/server.js' diretamente.

@@ -5,6 +5,14 @@ import { Request, Response, NextFunction } from 'express';
 import { protectRoute, apiKeyAuth } from '../../middleware/auth';
 import * as authUtils from '../../utils/auth';
 
+// ✅ MOCK DO MÓDULO INTEIRO - Deve vir ANTES de qualquer uso do módulo
+jest.mock('../../utils/auth', () => ({
+  verifyToken: jest.fn(),
+  // Se houver outras exports, mantenha-as:
+  // hashPassword: jest.fn(),
+  // comparePassword: jest.fn(),
+}));
+
 describe('Authentication Middleware', () => {
   let mockRequest: any;
   let mockResponse: Partial<Response>;
@@ -18,7 +26,7 @@ describe('Authentication Middleware', () => {
       params: {},
       cookies: {}
     };
-    
+
     mockResponse = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn()
@@ -29,43 +37,52 @@ describe('Authentication Middleware', () => {
   describe('protectRoute (JWT)', () => {
     it('Deve retornar 401 se nenhum token for fornecido', () => {
       mockRequest.headers = {};
-      
+
       protectRoute(mockRequest, mockResponse as Response, nextFunction);
-      
+
       // ✅ Validação EXATA do retorno conhecido
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: false,
-        message: 'Não autorizado, nenhum token'
+        message: 'Token não fornecido'
       });
       expect(nextFunction).not.toHaveBeenCalled();
     });
 
     it('Deve retornar 401 se token for inválido', () => {
-      jest.spyOn(authUtils, 'verifyToken').mockReturnValue(null);
-      
+      // ✅ CORREÇÃO: mockImplementation para LANÇAR erro (como o real faz)
+      (authUtils.verifyToken as jest.Mock).mockImplementation(() => {
+        throw new Error('Invalid token');
+      });
+
       mockRequest.headers = { authorization: 'Bearer invalid_token' };
 
       protectRoute(mockRequest, mockResponse as Response, nextFunction);
-      
+
+      // ✅ Verificar que verifyToken foi chamado
       expect(authUtils.verifyToken).toHaveBeenCalledWith('invalid_token');
+
+      // ✅ Agora o catch é executado e status(401) é chamado
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith(
-        expect.objectContaining({ 
+        expect.objectContaining({
           success: false,
-          message: expect.stringContaining('inválido') 
+          message: expect.stringContaining('inválido')
         })
       );
+      expect(nextFunction).not.toHaveBeenCalled();
     });
 
     it('Deve chamar next() se token for válido', () => {
       const mockUser = { id: 'user123', username: 'testuser' };
-      jest.spyOn(authUtils, 'verifyToken').mockReturnValue(mockUser);
-      
+
+      // ✅ Para token válido: retorna o usuário (sem lançar erro)
+      (authUtils.verifyToken as jest.Mock).mockReturnValue(mockUser);
+
       mockRequest.headers = { authorization: 'Bearer valid_token' };
 
       protectRoute(mockRequest, mockResponse as Response, nextFunction);
-      
+
       expect(authUtils.verifyToken).toHaveBeenCalledWith('valid_token');
       expect(nextFunction).toHaveBeenCalled();
       expect(mockRequest.user).toEqual(mockUser);
@@ -73,11 +90,11 @@ describe('Authentication Middleware', () => {
 
     it('Deve extrair token do header Authorization corretamente', () => {
       jest.spyOn(authUtils, 'verifyToken').mockReturnValue({ id: '123' });
-      
+
       mockRequest.headers = { authorization: 'Bearer my_jwt_token_here' };
 
       protectRoute(mockRequest, mockResponse as Response, nextFunction);
-      
+
       expect(authUtils.verifyToken).toHaveBeenCalledWith('my_jwt_token_here');
     });
   });
@@ -89,9 +106,9 @@ describe('Authentication Middleware', () => {
 
     it('Deve retornar 403 se API Key não for fornecida', () => {
       mockRequest.headers = {};
-      
+
       apiKeyAuth(mockRequest, mockResponse as Response, nextFunction);
-      
+
       // ✅ Validação EXATA do retorno conhecido
       expect(mockResponse.status).toHaveBeenCalledWith(403);
       expect(mockResponse.json).toHaveBeenCalledWith({
